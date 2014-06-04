@@ -11,6 +11,8 @@ import nerdherd.util.NerdyBot;
 import edu.wpi.first.wpilibj.CANJaguar;
 import edu.wpi.first.wpilibj.IterativeRobot;
 import edu.wpi.first.wpilibj.Joystick;
+import nerdherd.util.NerdyPIDController;
+import nerdherd.util.NerdyTimer;
 
 
 
@@ -25,21 +27,13 @@ import edu.wpi.first.wpilibj.Joystick;
  * directory.
  */
 public class RobotTemplate extends NerdyBot{
-    CANJaguar ltFt, rtFt, ltBk, rtBk;
-    Joystick Joy1, Joy2;
-
-    double ltFront  = 0.0,
-           ltBack   = 0.0,
-           rtFront  = 0.0,
-           rtBack   = 0.0,
-           forward  = 0.0,
-           strafe   = 0.0,
-           turn     = 0.0,
-           inval    = 0.0,
-           maxLimit = 0.0,
-           minLimit = 0.0;
-           
-           
+    private CANJaguar ltFt, rtFt, ltBk, rtBk;
+    private Joystick joy1;
+    private double ltPower  = 0.0, rtPower   = 0.0;
+    private NerdyPIDController pidController;
+    private NerdyTimer autonomousTimer;
+    
+                 
     
     /**
      * This function is run when the robot is first started up and should be
@@ -47,74 +41,112 @@ public class RobotTemplate extends NerdyBot{
      */
     public void robotInit() {
     
-    try{
+        try{
+            ltFt = new CANJaguar(3);
+            rtFt = new CANJaguar(4);
+            ltBk = new CANJaguar(2);
+            rtBk = new CANJaguar(5);
+        }catch (Exception e){
+            System.out.println(e);
+        }
     
-     ltFt = new CANJaguar(3);
-     rtFt = new CANJaguar(4);
-     ltBk = new CANJaguar(2);
-     rtBk = new CANJaguar(5);
+    autonomousTimer = new NerdyTimer(3);
+    pidController = new NerdyPIDController();
+    joy1 = new Joystick(1);
     
-    }catch (Exception e){
-    
-    System.out.println(e);
-    
-    }
-    
-    Joy1 = new Joystick(1);
+    pidController.setHeadingTolerance(5);
     
     }
 
+    public void autonomousInit(){
+        autonomousTimer.reset();
+        autonomousTimer.start();
+    }
     /**
      * This function is called periodically during autonomous
      */
     public void autonomousPeriodic() {
-
-    }
-    /**
-     * This function is called periodically during operator control
-     * @param inVal
-     * @param maxLimit
-     * @param minLimit
-     * @return 
-     */
-    private static double constrain(double inVal, double maxLimit, double minLimit){
-        if(inVal > maxLimit){
-            return maxLimit;
-        } else if(inVal < minLimit){
-            return minLimit;
-        } 
-            return inVal;
-    }
-    
-    public void teleopContinous() {
-        turn    = 0.0;
-        strafe  = 0.0;
-        forward = -Joy1.getY();
-            if(Joy1.getRawButton(2)){
-                strafe = Joy1.getX();
-            } else {
-                turn   = Joy1.getX();
-            }
-        ltFront = forward   +  strafe + turn;
-        ltBack  = forward   -  strafe + turn;
-        rtFront = -forward  +  strafe + turn;
-        rtBack  = -forward  -  strafe + turn;
-        System.out.println("FIRST: "+ltFront+"\t"+ltBack+"\t"+rtFront+"\t"+rtBack+"\t");
-        ltFront = constrain(ltFront, 1.0, -1.0);
-        ltBack = constrain(ltBack, 1.0, -1.0);
-        rtFront = constrain(rtFront, 1.0, -1.0);
-        rtBack = constrain(rtBack, 1.0, -1.0);
-        System.out.println("SECOND: "+ltFront+"\t"+ltBack+"\t"+rtFront+"\t"+rtBack+"\t");
+        /*
+            Line 1
+        */
+        pidController.moveAndRotate(5, 0.75);
+        ltPower = pidController.getLtPower();
+        rtPower  = pidController.getRtPower();
         
         try{
-        ltFt.set(ltFront);
-        ltBk.set(ltBack);
-        rtFt.set(rtFront);
-        rtBk.set(rtBack);
+            ltFt.set(ltPower);
+            ltBk.set(ltPower);
+            rtFt.set(rtPower);
+            rtBk.set(rtPower);
         } catch (Exception e){
             System.out.print(e);
         }
-      
+        
+        /*
+            Line 2
+        */
+//        if(pidController.isHeadingTolerable(5)){
+//            pidController.moveAndRotate(5, 0.75);
+//        }else{
+//            pidController.rotate(pidController.getPIDOutputAngular(5));
+//        }
+//        
+//        ltPower = pidController.getLtPower();
+//        rtPower  = pidController.getRtPower();
+//        
+//        try{
+//            ltFt.set(ltPower);
+//            ltBk.set(ltPower);
+//            rtFt.set(rtPower);
+//            rtBk.set(rtPower);
+//        } catch (Exception e){
+//            System.out.print(e);
+//        }
+        
+        /*
+            Square
+        */
+//        for (int i = 0; i < 4;){
+//            pidController.moveAndRotate(90*i, 0.75);
+//            ltPower = pidController.getLtPower();
+//            rtPower  = pidController.getRtPower();
+//            
+//            if(autonomousTimer.hasPeriodPassed()){
+//                i++;
+//            }
+//            try{
+//                ltFt.set(ltPower);
+//                ltBk.set(ltPower);
+//                rtFt.set(rtPower);
+//                rtBk.set(rtPower);
+//            } catch (Exception e){
+//                System.out.print(e);
+//            }
+//        }
+        /*
+            Set Motors
+        */
+    }
+    
+    public void teleopInit(){
+        autonomousTimer.stop();
+    }
+    
+    public void teleopContinous() {
+        double desiredAngle = (360-joy1.getDirectionDegrees())%360;
+        double linearPower  = -sign(joy1.getY()) * Math.abs(joy1.getMagnitude());
+        pidController.moveAndRotate(desiredAngle, linearPower);
+        ltPower = pidController.getLtPower();
+        rtPower  = pidController.getRtPower();
+        System.out.println("FIRST: "+ltPower+"\t"+rtPower);
+        try{
+            ltFt.set(ltPower);
+            ltBk.set(ltPower);
+            rtFt.set(rtPower);
+            rtBk.set(rtPower);
+        } catch (Exception e){
+            System.out.print(e);
+        }
     }
     
     /**
@@ -122,6 +154,16 @@ public class RobotTemplate extends NerdyBot{
      */
     public void testPeriodic() {
     
+    }
+    
+    private int sign(double number){
+        if (number > 0){
+            return 1;
+        }else if (number < 0){
+            return -1;
+        } else {
+            return 0;
+        }
     }
     
 }
